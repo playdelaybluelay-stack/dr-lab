@@ -267,9 +267,53 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.console_rule.arn
 }
 
+################################################################################
+# 7. GitHub Actions OIDC Configuration
+################################################################################
+
+# 1. GitHub OIDC Provider 생성
+resource "aws_iam_openid_connect_provider" "github" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+}
+
+# 2. GitHub Actions가 사용할 IAM Role
+resource "aws_iam_role" "github_actions_role" {
+  name = "github-actions-terraform-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Effect = "Allow"
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.github.arn
+        }
+        Condition = {
+          StringLike = {
+            "token.actions.githubusercontent.com:sub": "repo:playdelaybluelay-stack/dr-lab:*"
+          }
+        }
+      }
+    ]
+  })
+}
+
+# 3. Role에 권한 부여
+resource "aws_iam_role_policy_attachment" "github_actions_admin" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
 #################
 # Outputs       #
 #################
+
+output "github_actions_role_arn" {
+  value = aws_iam_role.github_actions_role.arn
+}
 
 output "source_ec2_public_ip" {
   value = aws_instance.app_server.public_ip
