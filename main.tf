@@ -244,6 +244,11 @@ resource "aws_lambda_function" "dr_recovery_lambda" {
 
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
 
+  memory_size   = 1024
+  ephemeral_storage {
+    size = 1024
+  }
+
   environment {
     variables = {
       SECRET_NAME  = "dr/github-token"
