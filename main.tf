@@ -157,11 +157,10 @@ resource "aws_instance" "app_server" {
 ################################################################################
 # 5. Monitoring & Event Trigger (CloudWatch & EventBridge)
 ################################################################################
-# EC2 상태 검사 실패 알람 (StatusCheckFailed)
 resource "aws_cloudwatch_metric_alarm" "ec2_failure_alarm" {
   alarm_name          = "ec2-status-check-failed"
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = "1"
+  evaluation_periods  = "2"
   metric_name         = "StatusCheckFailed"
   namespace           = "AWS/EC2"
   period              = "60"
@@ -175,7 +174,6 @@ resource "aws_cloudwatch_metric_alarm" "ec2_failure_alarm" {
   }
 }
 
-# EventBridge Rule: CloudWatch Alarm 상태가 ALARM으로 변경될 때 트리거
 resource "aws_cloudwatch_event_rule" "console_rule" {
   name        = "capture-ec2-alarm"
   description = "Capture CloudWatch Alarm State Change"
@@ -201,7 +199,6 @@ resource "aws_cloudwatch_event_target" "lambda_target" {
 ################################################################################
 # 6. Lambda Function (Recovery Handler)
 ################################################################################
-# Lambda가 가질 IAM Role (EC2 생성, S3 접근, CloudWatch 로그 등 권한 필요)
 resource "aws_iam_role" "lambda_exec_role" {
   name = "dr_lambda_execution_role"
 
@@ -230,6 +227,12 @@ data "archive_file" "lambda_zip" {
   output_path = "lambda_function_payload.zip"
 }
 
+resource "aws_lambda_layer_version" "tf_layer" {
+  filename   = "terraform-layer.zip"
+  layer_name = "terraform_execution_layer"
+  compatible_runtimes = ["python3.9"]
+}
+
 resource "aws_lambda_function" "dr_recovery_lambda" {
   filename      = "lambda_function_payload.zip"
   function_name = "DR-Recovery-Function"
@@ -237,6 +240,7 @@ resource "aws_lambda_function" "dr_recovery_lambda" {
   handler       = "lambda_function.lambda_handler"
   runtime       = "python3.9"
   timeout       = 300
+  layers        = [aws_lambda_layer_version.tf_layer.arn]
 
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
 
